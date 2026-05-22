@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+backend/.env
+mobile/.env
+
+__pycache__/
+*.py[cod]
+backend/venv/
+
+node_modules/
+.expo/
+dist/
+web-build/
