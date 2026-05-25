@@ -48,6 +48,7 @@ export default function VoiceCallScreen() {
   const [seconds, setSeconds] = useState(0);
   const [localSpeaking, setLocalSpeaking] = useState(false);
   const [remoteSpeaking, setRemoteSpeaking] = useState(false);
+  const [connectionQuality, setConnectionQuality] = useState('good');
   const pulse = useSharedValue(0);
   const secondsRef = useRef(0);
   const endedRef = useRef(false);
@@ -94,6 +95,10 @@ export default function VoiceCallScreen() {
         setRemoteUsers(event.remoteUsers);
       }
 
+      if (event.connectionQuality) {
+        setConnectionQuality(event.connectionQuality);
+      }
+
       if (event.isLocalSpeaking !== undefined) {
         setLocalSpeaking(event.isLocalSpeaking);
       }
@@ -109,7 +114,11 @@ export default function VoiceCallScreen() {
       try {
         setCallState('joining');
         setError(null);
-        await agoraVoiceService.joinChannel(channelName, agoraToken, uid);
+        let token = agoraToken;
+        if (!token && uid) {
+          token = (await voiceApi.agoraToken(channelName, uid).catch(() => null)) ?? '';
+        }
+        await agoraVoiceService.joinChannel(channelName, token, uid);
       } catch (joinError) {
         if (mounted) {
           setCallState('failed');
@@ -219,7 +228,7 @@ export default function VoiceCallScreen() {
               </View>
               <View style={styles.signalPill}>
                 <Signal size={14} color={palette.emeraldDeep} />
-                <Text style={styles.signalText}>{connected ? 'Live' : 'Syncing'}</Text>
+                <Text style={styles.signalText}>{connected ? connectionQuality : 'Syncing'}</Text>
               </View>
             </View>
 

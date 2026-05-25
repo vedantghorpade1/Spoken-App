@@ -1,15 +1,10 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { House, LineChart, Mic2, Radar, Settings, UserRound } from 'lucide-react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -46,7 +41,7 @@ export default function TabLayout() {
         name="rooms"
         options={{
           title: 'Rooms',
-          tabBarIcon: ({ color, focused }) => <RoomsTabIcon color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <IconWrap focused={focused}><Mic2 size={22} color={color} /></IconWrap>,
         }}
       />
       <Tabs.Screen
@@ -71,33 +66,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-  );
-}
-
-function RoomsTabIcon({ focused, color }: { focused: boolean; color: string }) {
-  const pulse = useSharedValue(0);
-
-  React.useEffect(() => {
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-      ),
-      -1,
-      false,
-    );
-  }, [pulse]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: focused ? 0.22 + pulse.value * 0.22 : 0,
-    transform: [{ scale: 0.85 + pulse.value * 0.35 }],
-  }));
-
-  return (
-    <IconWrap focused={focused}>
-      <Animated.View style={[styles.roomsPulse, pulseStyle]} />
-      <Mic2 size={22} color={color} />
-    </IconWrap>
   );
 }
 
@@ -142,12 +110,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,201,135,0.13)',
     borderWidth: 1,
     borderColor: 'rgba(7,149,106,0.12)',
-  },
-  roomsPulse: {
-    position: 'absolute',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: palette.emeraldDeep,
   },
 });

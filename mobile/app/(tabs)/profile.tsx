@@ -1,6 +1,7 @@
+import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Edit3, Share2, UserPlus } from 'lucide-react-native';
+import { Edit3, Settings, Share2, UserPlus } from 'lucide-react-native';
 
 import { Avatar, GlassCard, Metric, Pill, Screen, SectionHeader, palette } from '@/components/premium-ui';
 import { useAuth } from '@/hooks/use-auth';
@@ -45,6 +46,20 @@ export default function ProfileScreen() {
             <Metric value="1,240" label="XP" accent={palette.emeraldDeep} />
             <Metric value="24" label="day streak" />
           </View>
+
+          <SectionHeader title="Account" />
+          <GlassCard style={styles.accountCard}>
+            <Pressable onPress={() => router.push('/(tabs)/settings' as never)} style={styles.settingsRow}>
+              <View style={styles.settingsIcon}>
+                <Settings size={18} color={palette.emeraldDeep} />
+              </View>
+              <View style={styles.settingsCopy}>
+                <Text style={styles.settingsTitle}>Settings</Text>
+                <Text style={styles.settingsSubtitle}>Account, voice, privacy, and app preferences</Text>
+              </View>
+              <View style={styles.chevron} />
+            </Pressable>
+          </GlassCard>
 
           <SectionHeader title="Achievements" />
           <View style={styles.badgeGrid}>
@@ -106,6 +121,32 @@ const styles = StyleSheet.create({
     borderColor: palette.stroke,
   },
   metricsRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
+  accountCard: { paddingVertical: 8 },
+  settingsRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.emeraldSoft,
+  },
+  settingsCopy: { flex: 1, gap: 3 },
+  settingsTitle: { color: palette.text, fontSize: 15, fontWeight: '900' },
+  settingsSubtitle: { color: palette.muted, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  chevron: {
+    width: 9,
+    height: 9,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderColor: palette.softText,
+    transform: [{ rotate: '45deg' }],
+  },
   badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   badge: { width: '48%', minHeight: 86, justifyContent: 'center' },
   badgeText: { color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: '900' },

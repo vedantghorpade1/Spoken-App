@@ -21,16 +21,21 @@ import { useAuth } from '@/hooks/use-auth';
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('demo@speakai.app');
-  const [password, setPassword] = useState('speakai');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleLogin() {
     setError('');
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
+      setError('Enter your email and password.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await login({ email, password });
+      await login({ email: trimmedEmail, password });
       router.replace('/(tabs)');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

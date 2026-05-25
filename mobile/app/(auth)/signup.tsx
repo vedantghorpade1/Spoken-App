@@ -20,17 +20,31 @@ import { useAuth } from '@/hooks/use-auth';
 
 export default function SignupScreen() {
   const { signup } = useAuth();
-  const [name, setName] = useState('Vedant Rao');
-  const [email, setEmail] = useState('vedant@speakai.app');
-  const [password, setPassword] = useState('speakai');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSignup() {
     setError('');
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (trimmedName.length < 2) {
+      setError('Enter your name.');
+      return;
+    }
+    if (!trimmedEmail) {
+      setError('Enter your email.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await signup({ name, email, password });
+      await signup({ name: trimmedName, email: trimmedEmail, password });
       router.replace('/(tabs)');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed');

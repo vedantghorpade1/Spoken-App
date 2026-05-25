@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 
 from jwt_handler import create_access_token, decode_access_token
-from matchmaking import create_agora_token, create_channel_name, create_visitor_uid
+from matchmaking import AGORA_APP_ID, create_agora_token, create_channel_name, create_visitor_uid
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -37,6 +37,47 @@ fastapi_app.add_middleware(
 online_users: dict[str, str] = {}
 socket_users: dict[str, str] = {}
 matchmaking_queue: list[str] = []
+static_room_participants: dict[str, dict[str, dict[str, Any]]] = {}
+static_room_speakers: dict[str, str | None] = {}
+
+PREDEFINED_ROOMS = [
+    {
+        "id": "room_1",
+        "name": "Beginner English",
+        "description": "Practice basic English speaking",
+        "channel": "beginner_english",
+        "category": "Beginner",
+        "icon": "book-open-variant",
+        "isLive": True,
+    },
+    {
+        "id": "room_2",
+        "name": "IELTS",
+        "description": "Practice IELTS speaking cue cards and follow-up questions",
+        "channel": "ielts_speaking",
+        "category": "IELTS",
+        "icon": "school",
+        "isLive": True,
+    },
+    {
+        "id": "room_3",
+        "name": "Debate",
+        "description": "Practice opinions, arguments, and confident responses",
+        "channel": "debate_room",
+        "category": "Debate",
+        "icon": "forum",
+        "isLive": True,
+    },
+    {
+        "id": "room_4",
+        "name": "Startup Talks",
+        "description": "Discuss ideas, pitches, products, and business English",
+        "channel": "startup_talks",
+        "category": "Startup",
+        "icon": "rocket-launch",
+        "isLive": True,
+    },
+]
 
 
 def utcnow() -> str:
@@ -249,11 +290,34 @@ class RoomCreateRequest(BaseModel):
 
 
 class RoomJoinRequest(BaseModel):
-    room_id: str
+    room_id: str | None = None
+    roomId: str | None = None
+    userId: str | None = None
+
+
+class StaticRoomResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    channel: str
+    category: str
+    icon: str
+    participants: int
+    isLive: bool
+
+
+class StaticRoomJoinResponse(BaseModel):
+    token: str | None
+    channelName: str
+    appId: str | None
+    uid: int
+    room: StaticRoomResponse
+    participants: list[dict[str, Any]]
 
 
 class RoomLeaveRequest(BaseModel):
-    room_id: str
+    room_id: str | None = None
+    roomId: str | None = None
     duration: int = Field(default=0, ge=0)
 
 
@@ -310,6 +374,37 @@ def row_to_participant(row: sqlite3.Row) -> CallParticipant:
 def initials_for(name: str) -> str:
     parts = [part for part in name.strip().split(" ") if part]
     return "".join(part[0] for part in parts[:2]).upper() or "SA"
+
+
+def find_predefined_room(room_id: str | None) -> dict[str, Any] | None:
+    if not room_id:
+        return None
+    return next((room for room in PREDEFINED_ROOMS if room["id"] == room_id), None)
+
+
+def static_participant_payload(user: sqlite3.Row, uid: int | None = None, muted: bool = False, speaking: bool = False) -> dict[str, Any]:
+    return {
+        "id": user["id"],
+        "uid": uid or create_visitor_uid(),
+        "name": user["name"],
+        "initials": initials_for(user["name"]),
+        "muted": muted,
+        "speaking": speaking,
+    }
+
+
+def predefined_room_response(room: dict[str, Any]) -> StaticRoomResponse:
+    participants = static_room_participants.get(room["id"], {})
+    return StaticRoomResponse(
+        id=room["id"],
+        name=room["name"],
+        description=room["description"],
+        channel=room["channel"],
+        category=room["category"],
+        icon=room["icon"],
+        participants=len(participants),
+        isLive=room["isLive"],
+    )
 
 
 def ensure_room_analytics(conn: sqlite3.Connection, user_id: str) -> sqlite3.Row:
@@ -677,20 +772,20 @@ def seed_demo_rooms(conn: sqlite3.Connection, current_user: sqlite3.Row) -> None
         return
     now = utcnow()
     demo_specs = [
-        ("Daily fluency lounge", "Talk about work, routines, and small wins", "Casual Talk", "B1-B2", "fluency,confidence,daily"),
-        ("IELTS speaking sprint", "Cue cards, follow-ups, and band 7 answers", "IELTS", "B2-C1", "ielts,exam,speaking"),
-        ("Startup pitch practice", "Explain ideas clearly with sharper vocabulary", "Startup Talks", "B2", "startup,pitch,clarity"),
-        ("Pronunciation clinic", "Fix stress, rhythm, and difficult sounds", "Pronunciation", "Mixed", "pronunciation,accent,feedback"),
+        ("Daily fluency lounge", "Talk about work, routines, and small wins", "Casual Talk", "B1-B2", "fluency,confidence,daily", "open"),
+        ("IELTS speaking sprint", "Cue cards, follow-ups, and band 7 answers", "IELTS", "B2-C1", "ielts,exam,speaking", "private"),
+        ("Startup pitch practice", "Explain ideas clearly with sharper vocabulary", "Startup Talks", "B2", "startup,pitch,clarity", "friends"),
+        ("Pronunciation clinic", "Fix stress, rhythm, and difficult sounds", "Pronunciation", "Mixed", "pronunciation,accent,feedback", "scheduled"),
     ]
-    for title, topic, category, level, tags in demo_specs:
+    for title, topic, category, level, tags, room_type in demo_specs:
         room_id = secrets.token_urlsafe(12)
         conn.execute(
             """
             INSERT INTO rooms
             (id, host_id, title, topic, description, category, level, tags, room_type, channel_name, status, started_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, 'live', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)
             """,
-            (room_id, current_user["id"], title, topic, "A live SpeakAI community room.", category, level, tags, create_channel_name(), now, now),
+            (room_id, current_user["id"], title, topic, "A live SpeakAI community room.", category, level, tags, room_type, create_channel_name(), now, now),
         )
         conn.execute(
             """
@@ -731,6 +826,11 @@ async def rooms_trending(current_user: sqlite3.Row = Depends(get_current_user)):
             """
         ).fetchall()
     return [build_room_response(row, current_user["id"]) for row in rows]
+
+
+@fastapi_app.get("/rooms", response_model=list[StaticRoomResponse])
+async def predefined_rooms(current_user: sqlite3.Row = Depends(get_current_user)):
+    return [predefined_room_response(room) for room in PREDEFINED_ROOMS]
 
 
 @fastapi_app.post("/rooms/create", response_model=LiveRoomResponse)
@@ -785,11 +885,33 @@ async def rooms_create(payload: RoomCreateRequest, current_user: sqlite3.Row = D
     return build_room_response(room, current_user["id"], include_token=True)
 
 
-@fastapi_app.post("/rooms/join", response_model=LiveRoomResponse)
+@fastapi_app.post("/rooms/join")
 async def rooms_join(payload: RoomJoinRequest, current_user: sqlite3.Row = Depends(get_current_user)):
+    requested_room_id = payload.roomId or payload.room_id
+    predefined_room = find_predefined_room(requested_room_id)
+    if predefined_room:
+        uid = create_visitor_uid()
+        participant = static_participant_payload(current_user, uid=uid)
+        room_participants = static_room_participants.setdefault(predefined_room["id"], {})
+        room_participants[current_user["id"]] = participant
+        response = StaticRoomJoinResponse(
+            token=create_agora_token(predefined_room["channel"], uid),
+            channelName=predefined_room["channel"],
+            appId=AGORA_APP_ID,
+            uid=uid,
+            room=predefined_room_response(predefined_room),
+            participants=list(room_participants.values()),
+        )
+        await sio.emit(
+            "participant_joined",
+            {"roomId": predefined_room["id"], "participant": participant, "participants": list(room_participants.values())},
+            room=predefined_room["id"],
+        )
+        return response.model_dump()
+
     now = utcnow()
     with get_conn() as conn:
-        room = conn.execute("SELECT * FROM rooms WHERE id = ? AND status = 'live'", (payload.room_id,)).fetchone()
+        room = conn.execute("SELECT * FROM rooms WHERE id = ? AND status = 'live'", (requested_room_id,)).fetchone()
         if not room:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
         role = "host" if room["host_id"] == current_user["id"] else "listener"
@@ -799,31 +921,45 @@ async def rooms_join(payload: RoomJoinRequest, current_user: sqlite3.Row = Depen
             VALUES (?, ?, ?, 0, 0, 0, ?, NULL)
             ON CONFLICT(room_id, user_id) DO UPDATE SET left_at = NULL, role = excluded.role
             """,
-            (payload.room_id, current_user["id"], role, now),
+            (requested_room_id, current_user["id"], role, now),
         )
         analytics = ensure_room_analytics(conn, current_user["id"])
         conn.execute(
             "UPDATE room_analytics SET rooms_joined = ?, average_confidence = ? WHERE user_id = ?",
             (analytics["rooms_joined"] + 1, max(analytics["average_confidence"], 82), current_user["id"]),
         )
-        room = conn.execute("SELECT * FROM rooms WHERE id = ?", (payload.room_id,)).fetchone()
-    await sio.emit("room_participant_joined", {"room_id": payload.room_id, "user_id": current_user["id"], "name": current_user["name"]}, room=payload.room_id)
+        room = conn.execute("SELECT * FROM rooms WHERE id = ?", (requested_room_id,)).fetchone()
+    await sio.emit("room_participant_joined", {"room_id": requested_room_id, "user_id": current_user["id"], "name": current_user["name"]}, room=requested_room_id)
     return build_room_response(room, current_user["id"], include_token=True)
 
 
 @fastapi_app.post("/rooms/leave")
 async def rooms_leave(payload: RoomLeaveRequest, current_user: sqlite3.Row = Depends(get_current_user)):
+    requested_room_id = payload.roomId or payload.room_id
+    predefined_room = find_predefined_room(requested_room_id)
+    if predefined_room:
+        participants = static_room_participants.setdefault(predefined_room["id"], {})
+        participant = participants.pop(current_user["id"], None)
+        if static_room_speakers.get(predefined_room["id"]) == current_user["id"]:
+            static_room_speakers[predefined_room["id"]] = None
+        await sio.emit(
+            "participant_left",
+            {"roomId": predefined_room["id"], "participant": participant, "userId": current_user["id"], "participants": list(participants.values())},
+            room=predefined_room["id"],
+        )
+        return {"status": "left"}
+
     with get_conn() as conn:
         conn.execute(
             "UPDATE room_participants SET left_at = ?, speaking = 0 WHERE room_id = ? AND user_id = ?",
-            (utcnow(), payload.room_id, current_user["id"]),
+            (utcnow(), requested_room_id, current_user["id"]),
         )
         analytics = ensure_room_analytics(conn, current_user["id"])
         conn.execute(
             "UPDATE room_analytics SET speaking_time = ?, speaking_streak = ? WHERE user_id = ?",
             (analytics["speaking_time"] + payload.duration, max(analytics["speaking_streak"], 1), current_user["id"]),
         )
-    await sio.emit("room_participant_left", {"room_id": payload.room_id, "user_id": current_user["id"]}, room=payload.room_id)
+    await sio.emit("room_participant_left", {"room_id": requested_room_id, "user_id": current_user["id"]}, room=requested_room_id)
     return {"status": "left"}
 
 
@@ -953,6 +1089,32 @@ async def disconnect(sid):
     online_users.pop(user_id, None)
     if user_id in matchmaking_queue:
         matchmaking_queue.remove(user_id)
+    with get_conn() as conn:
+        stale_calls = conn.execute(
+            """
+            SELECT * FROM calls
+            WHERE status IN ('ringing', 'active')
+            AND (caller_id = ? OR receiver_id = ?)
+            """,
+            (user_id, user_id),
+        ).fetchall()
+        for call in stale_calls:
+            conn.execute(
+                "UPDATE calls SET status = 'ended', ended_at = ?, ended_by = ? WHERE id = ?",
+                (utcnow(), user_id, call["id"]),
+            )
+        ended_calls = [
+            conn.execute("SELECT * FROM calls WHERE id = ?", (call["id"],)).fetchone()
+            for call in stale_calls
+        ]
+    for room_id, participants in static_room_participants.items():
+        participant = participants.pop(user_id, None)
+        if participant:
+            if static_room_speakers.get(room_id) == user_id:
+                static_room_speakers[room_id] = None
+            await sio.emit("participant_left", {"roomId": room_id, "participant": participant, "userId": user_id, "participants": list(participants.values())}, room=room_id)
+    for call in ended_calls:
+        await emit_call_to_participants(call, "call_ended", {"duration": call["duration"]})
     await sio.emit("user_left", {"user_id": user_id})
 
 
@@ -988,29 +1150,41 @@ async def call_rejected(sid, data):
 async def room_joined(sid, data):
     session = await sio.get_session(sid)
     user_id = session["user_id"]
-    room_id = data.get("room_id")
+    room_id = data.get("roomId") or data.get("room_id")
     if room_id:
         await sio.enter_room(sid, room_id)
-        await sio.emit("room_presence", {"room_id": room_id, "user_id": user_id, "online": True}, room=room_id)
+        participant = static_room_participants.get(room_id, {}).get(user_id)
+        await sio.emit(
+            "participant_joined",
+            {"roomId": room_id, "participant": participant, "participants": list(static_room_participants.get(room_id, {}).values())},
+            room=room_id,
+        )
 
 
 @sio.event
 async def room_left(sid, data):
     session = await sio.get_session(sid)
     user_id = session["user_id"]
-    room_id = data.get("room_id")
+    room_id = data.get("roomId") or data.get("room_id")
     if room_id:
         await sio.leave_room(sid, room_id)
-        await sio.emit("room_presence", {"room_id": room_id, "user_id": user_id, "online": False}, room=room_id)
+        participants = static_room_participants.get(room_id, {})
+        await sio.emit("participant_left", {"roomId": room_id, "userId": user_id, "participants": list(participants.values())}, room=room_id)
 
 
 @sio.event
 async def room_mute_changed(sid, data):
     session = await sio.get_session(sid)
     user_id = session["user_id"]
-    room_id = data.get("room_id")
+    room_id = data.get("roomId") or data.get("room_id")
     muted = bool(data.get("muted"))
     if not room_id:
+        return
+    if room_id in static_room_participants:
+        participant = static_room_participants[room_id].get(user_id)
+        if participant:
+            participant["muted"] = muted
+        await sio.emit("room_mute_changed", {"roomId": room_id, "userId": user_id, "muted": muted, "participants": list(static_room_participants[room_id].values())}, room=room_id)
         return
     with get_conn() as conn:
         conn.execute("UPDATE room_participants SET muted = ? WHERE room_id = ? AND user_id = ?", (int(muted), room_id, user_id))
@@ -1021,9 +1195,20 @@ async def room_mute_changed(sid, data):
 async def room_speaking_changed(sid, data):
     session = await sio.get_session(sid)
     user_id = session["user_id"]
-    room_id = data.get("room_id")
+    room_id = data.get("roomId") or data.get("room_id")
     speaking = bool(data.get("speaking"))
     if not room_id:
+        return
+    if room_id in static_room_participants:
+        participants = static_room_participants[room_id]
+        for participant in participants.values():
+            participant["speaking"] = participant["id"] == user_id and speaking
+        static_room_speakers[room_id] = user_id if speaking else None
+        await sio.emit(
+            "active_speaker",
+            {"roomId": room_id, "userId": user_id if speaking else None, "speaking": speaking, "participants": list(participants.values())},
+            room=room_id,
+        )
         return
     with get_conn() as conn:
         conn.execute("UPDATE room_participants SET speaking = ? WHERE room_id = ? AND user_id = ?", (int(speaking), room_id, user_id))

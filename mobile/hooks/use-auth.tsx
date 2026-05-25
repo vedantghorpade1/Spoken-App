@@ -1,7 +1,7 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { authApi, AuthCredentials, AuthUser, setApiToken, TOKEN_KEY, USER_KEY } from '@/services/api';
+import { authApi, AuthCredentials, AuthUser, clearStoredAuth, onUnauthorized, setApiToken, TOKEN_KEY, USER_KEY } from '@/services/api';
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -21,11 +21,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
+    return onUnauthorized(() => {
+      setToken(null);
+      setUser(null);
+    });
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
 
     async function restoreSession() {
       try {
-        const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+        const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
 
         if (!mounted) {
           return;
@@ -38,16 +45,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
             const profile = await authApi.profile();
             if (mounted) {
               setUser(profile);
-              await SecureStore.setItemAsync(USER_KEY, JSON.stringify(profile));
+              await AsyncStorage.setItem(USER_KEY, JSON.stringify(profile));
             }
           } catch {
             setApiToken(null);
             setToken(null);
             setUser(null);
-            await Promise.all([
-              SecureStore.deleteItemAsync(TOKEN_KEY),
-              SecureStore.deleteItemAsync(USER_KEY),
-            ]);
+            await clearStoredAuth();
           }
         }
       } finally {
@@ -69,8 +73,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setToken(nextToken);
     setUser(nextUser);
     await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, nextToken),
-      SecureStore.setItemAsync(USER_KEY, JSON.stringify(nextUser)),
+      AsyncStorage.setItem(TOKEN_KEY, nextToken),
+      AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser)),
     ]);
   }, []);
 
@@ -94,7 +98,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setApiToken(null);
     setToken(null);
     setUser(null);
-    await Promise.all([SecureStore.deleteItemAsync(TOKEN_KEY), SecureStore.deleteItemAsync(USER_KEY)]);
+    await clearStoredAuth();
   }, []);
 
   const value = useMemo<AuthContextValue>(

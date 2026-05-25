@@ -51,6 +51,13 @@ export const voiceApi = {
   async endCall(callId: string, duration: number) {
     await api.post('/call/end', { call_id: callId, duration });
   },
+  async agoraToken(channelName: string, uid: number) {
+    const { data } = await api.post<{ agora_token?: string | null; uid: number; channel_name: string }>('/agora/token', {
+      channel_name: channelName,
+      uid,
+    });
+    return data.agora_token ?? null;
+  },
   async onlineFriends() {
     const { data } = await api.get<CallPartner[]>('/friends/online');
     return data;

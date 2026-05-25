@@ -66,6 +66,7 @@ export default function SearchingScreen() {
   useEffect(() => {
     let cancelled = false;
     let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function findPartner() {
       try {
@@ -85,6 +86,17 @@ export default function SearchingScreen() {
             openCall(status.call);
           }
         }, 2500);
+        timeoutTimer = setTimeout(async () => {
+          if (!cancelled) {
+            cancelled = true;
+            if (fallbackTimer) {
+              clearInterval(fallbackTimer);
+              fallbackTimer = null;
+            }
+            await leaveMatchmakingQueue().catch(() => undefined);
+            setError('No partner found yet. Try again in a moment.');
+          }
+        }, 45000);
       } catch (matchError) {
         if (!cancelled) {
           setError(matchError instanceof Error ? matchError.message : 'Unable to find a partner.');
@@ -99,6 +111,10 @@ export default function SearchingScreen() {
       if (fallbackTimer) {
         clearInterval(fallbackTimer);
       }
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+      }
+      leaveMatchmakingQueue().catch(() => undefined);
     };
   }, [openCall]);
 

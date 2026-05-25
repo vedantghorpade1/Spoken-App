@@ -26,6 +26,7 @@ export type AgoraVoiceEvent = {
   remoteUsers?: number[];
   isLocalSpeaking?: boolean;
   isRemoteSpeaking?: boolean;
+  connectionQuality?: 'excellent' | 'good' | 'poor' | 'reconnecting' | 'failed';
   error?: string | null;
 };
 
@@ -40,6 +41,9 @@ class AgoraVoiceService {
   private joined = false;
   private muted = false;
   private speakerOn = true;
+  private currentChannelName: string | null = null;
+  private currentToken = '';
+  private currentUid = 0;
 
   subscribe(listener: AgoraVoiceListener) {
     this.listeners.add(listener);
@@ -99,6 +103,9 @@ class AgoraVoiceService {
     }
 
     this.emit({ state: 'joining', remoteUsers: [] });
+    this.currentChannelName = channelName;
+    this.currentToken = token;
+    this.currentUid = uid;
 
     const result = this.engine.joinChannel(token, channelName, uid, {
       clientRoleType: ClientRoleType.ClientRoleBroadcaster,
@@ -110,6 +117,14 @@ class AgoraVoiceService {
     if (result < 0) {
       throw new Error(`Agora join failed (${result}).`);
     }
+  }
+
+  renewToken(token: string | null | undefined) {
+    if (!this.engine || !token) {
+      return;
+    }
+    this.currentToken = token;
+    this.engine.renewToken(token);
   }
 
   muteLocalAudio(muted: boolean) {
@@ -152,6 +167,9 @@ class AgoraVoiceService {
     this.engine.leaveChannel();
     this.joined = false;
     this.remoteUsers.clear();
+    this.currentChannelName = null;
+    this.currentToken = '';
+    this.currentUid = 0;
     this.emit({ state: 'disconnected', remoteUsers: [] });
   }
 
@@ -173,6 +191,9 @@ class AgoraVoiceService {
     this.handler = null;
     this.initialized = false;
     this.joined = false;
+    this.currentChannelName = null;
+    this.currentToken = '';
+    this.currentUid = 0;
     this.remoteUsers.clear();
     this.emit({ state: 'idle', remoteUsers: [] });
   }
@@ -198,15 +219,15 @@ class AgoraVoiceService {
       },
       onConnectionStateChanged: (_connection, state) => {
         if (state === ConnectionStateType.ConnectionStateReconnecting) {
-          this.emit({ state: 'reconnecting' });
+          this.emit({ state: 'reconnecting', connectionQuality: 'reconnecting' });
         }
 
         if (state === ConnectionStateType.ConnectionStateConnected) {
-          this.emit({ state: 'connected', remoteUsers: Array.from(this.remoteUsers), error: null });
+          this.emit({ state: 'connected', remoteUsers: Array.from(this.remoteUsers), connectionQuality: 'good', error: null });
         }
 
         if (state === ConnectionStateType.ConnectionStateFailed) {
-          this.emit({ state: 'failed', error: 'Connection failed. Leave and try another partner.' });
+          this.emit({ state: 'failed', connectionQuality: 'failed', error: 'Connection failed. Leave and try another partner.' });
         }
       },
       onAudioVolumeIndication: (_connection, speakers, _speakerNumber, totalVolume) => {

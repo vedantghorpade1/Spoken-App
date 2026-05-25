@@ -1,9 +1,13 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 import { API_BASE_URL } from '@/constants/api';
 
 export const TOKEN_KEY = 'speakai.token';
 export const USER_KEY = 'speakai.user';
+
+let cachedToken: string | null = null;
+const unauthorizedListeners = new Set<() => void>();
 
 export type AuthCredentials = {
   name?: string;
@@ -36,12 +40,52 @@ export const api = axios.create({
 });
 
 export function setApiToken(token: string | null) {
+  cachedToken = token;
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
   } else {
     delete api.defaults.headers.common.Authorization;
   }
 }
+
+export async function getStoredToken() {
+  if (cachedToken) {
+    return cachedToken;
+  }
+  cachedToken = await AsyncStorage.getItem(TOKEN_KEY);
+  return cachedToken;
+}
+
+export async function clearStoredAuth() {
+  setApiToken(null);
+  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+}
+
+export function onUnauthorized(listener: () => void) {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+api.interceptors.request.use(async (config) => {
+  const token = await getStoredToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      await clearStoredAuth();
+      unauthorizedListeners.forEach((listener) => listener());
+    }
+    return Promise.reject(error);
+  },
+);
 
 function normalizeError(error: unknown): Error {
   if (axios.isAxiosError(error)) {

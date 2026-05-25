@@ -17,7 +17,7 @@ import {
 } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import { useEffect } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -38,9 +38,9 @@ type IconComponent = ComponentType<{ size?: number; color?: string; strokeWidth?
 
 const quickActions: Array<{ label: string; meta: string; icon: IconComponent; onPress?: () => void }> = [
   { label: 'Random Match', meta: 'Find speaking partners', icon: Radar, onPress: () => router.push('/match/searching') },
-  { label: 'Join Voice Room', meta: 'Enter live rooms', icon: MessageCircleMore, onPress: () => router.push('/match') },
+  { label: 'Join Voice Room', meta: 'Enter live rooms', icon: MessageCircleMore, onPress: () => router.push('/(tabs)/rooms' as never) },
   { label: 'AI Interview', meta: 'Practice role play', icon: Sparkles },
-  { label: 'Group Discussion', meta: 'Join small circles', icon: Users },
+  { label: 'Group Discussion', meta: 'Join small circles', icon: Users, onPress: () => router.push('/(tabs)/rooms' as never) },
   { label: 'Pronunciation Test', meta: 'Get voice feedback', icon: Mic },
   { label: 'Grammar Practice', meta: 'Sharpen daily drills', icon: GraduationCap },
 ];
@@ -59,12 +59,8 @@ function firstName(name?: string | null) {
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { width } = useWindowDimensions();
   const name = firstName(user?.name);
   const initials = (user?.name || 'Vedant').slice(0, 2).toUpperCase();
-  const horizontalPadding = 40;
-  const actionGap = 12;
-  const actionCardWidth = Math.floor((width - horizontalPadding - actionGap) / 2);
 
   return (
     <Screen>
@@ -109,7 +105,7 @@ export default function HomeScreen() {
             scrollEnabled={false}
             columnWrapperStyle={styles.actionsRow}
             contentContainerStyle={styles.actionsGrid}
-            renderItem={({ item }) => <ActionCard action={item} width={actionCardWidth} />}
+            renderItem={({ item }) => <ActionCard action={item} />}
           />
 
           <SectionTitle title="Live activity" action="Realtime" />
@@ -272,7 +268,7 @@ function AnimatedBar({ index }: { index: number }) {
   return <Animated.View style={[styles.waveBar, style]} />;
 }
 
-function ActionCard({ action, width }: { action: (typeof quickActions)[number]; width: number }) {
+function ActionCard({ action }: { action: (typeof quickActions)[number] }) {
   const Icon = action.icon;
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
@@ -288,7 +284,7 @@ function ActionCard({ action, width }: { action: (typeof quickActions)[number]; 
       onPressOut={() => {
         scale.value = withSpring(1, { damping: 16, stiffness: 240 });
       }}
-      style={[styles.actionPressable, { width }]}>
+      style={styles.actionPressable}>
       <Animated.View style={[styles.actionCard, animatedStyle]}>
         <LinearGradient
           colors={['rgba(255,255,255,0.98)', 'rgba(20,201,135,0.15)']}
@@ -296,13 +292,13 @@ function ActionCard({ action, width }: { action: (typeof quickActions)[number]; 
           end={{ x: 1, y: 1 }}
           style={styles.actionGradient}>
           <View style={styles.actionIcon}>
-            <Icon size={28} color={palette.emeraldDeep} strokeWidth={2.35} />
+            <Icon size={32} color={palette.emeraldDeep} strokeWidth={2.35} />
           </View>
           <View style={styles.actionCopy}>
             <Text style={styles.actionLabel} numberOfLines={2}>
               {action.label}
             </Text>
-            <Text style={styles.actionMeta} numberOfLines={1}>
+            <Text style={styles.actionMeta} numberOfLines={2}>
               {action.meta}
             </Text>
           </View>
@@ -495,12 +491,13 @@ const styles = StyleSheet.create({
   },
   sectionAction: { color: palette.emeraldDeep, fontSize: 12, fontWeight: '900' },
   actionsGrid: { paddingBottom: 2 },
-  actionsRow: { gap: 12 },
+  actionsRow: { justifyContent: 'space-between' },
   actionPressable: {
-    marginBottom: 12,
+    width: '47%',
+    marginBottom: 16,
   },
   actionCard: {
-    height: 154,
+    minHeight: 140,
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: 'rgba(7,149,106,0.16)',
@@ -511,25 +508,27 @@ const styles = StyleSheet.create({
   },
   actionGradient: {
     flex: 1,
-    padding: 16,
-    justifyContent: 'space-between',
+    padding: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(20,201,135,0.14)',
   },
   actionIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 20,
+    width: 62,
+    height: 62,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.78)',
     borderWidth: 1,
     borderColor: 'rgba(20,201,135,0.12)',
   },
-  actionCopy: { gap: 4 },
-  actionLabel: { color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: '900' },
-  actionMeta: { color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: '800' },
+  actionCopy: { alignItems: 'center', gap: 5 },
+  actionLabel: { color: palette.text, fontSize: 16, lineHeight: 20, fontWeight: '900', textAlign: 'center' },
+  actionMeta: { color: palette.muted, fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
   activityRow: { flexDirection: 'row', gap: 10 },
   activityCard: { flex: 1, minHeight: 116, borderRadius: 24, justifyContent: 'space-between' },
   activityBadge: {
