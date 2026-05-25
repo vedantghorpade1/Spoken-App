@@ -1,9 +1,9 @@
 fastapi
 uvicorn[standard]
 python-dotenv
-motor
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 pydantic[email]
 agora-token-builder
+python-socketio[asgi]
